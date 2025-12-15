@@ -111,24 +111,57 @@ def main():
         except Exception as e:
             st.error(f"讀取 '總和' 分頁失敗: {e}")
 
-    # ==========================================
-    # 功能 2: 個別基金明細
+# ==========================================
+    # 功能 2: 個別基金明細 (已修正重複欄位錯誤)
     # ==========================================
     elif menu == "個別基金明細":
         # 排除非基金的分頁
         ignore_sheets = ["總和", "配息", "工作表1", "Lists", "Dropdowns"] 
+        # 確保只讀取真正存在的 sheet
         all_sheets = [s.title for s in sh.worksheets() if s.title not in ignore_sheets]
         
         selected_fund = st.selectbox("選擇基金", all_sheets)
         
         if selected_fund:
-            ws = sh.worksheet(selected_fund)
-            data = ws.get_all_values()
-            # 將第一列設為標題
-            df = pd.DataFrame(data[1:], columns=data[0])
-            
-            st.subheader(f"📂 {selected_fund} 交易紀錄")
-            st.dataframe(df, use_container_width=True)
+            try:
+                ws = sh.worksheet(selected_fund)
+                data = ws.get_all_values()
+                
+                if len(data) > 0:
+                    raw_headers = data[0] # 原始標題
+                    rows = data[1:]       # 數據內容
+                    
+                    # --- 關鍵修正：處理重複或空白的標題 ---
+                    final_headers = []
+                    header_count = {}
+
+                    for i, col_name in enumerate(raw_headers):
+                        # 1. 處理空白標題
+                        col_name = col_name.strip()
+                        if not col_name:
+                            col_name = f"空欄_{i}" 
+                        
+                        # 2. 處理重複標題 (例如有兩個 '備註')
+                        if col_name in header_count:
+                            header_count[col_name] += 1
+                            new_name = f"{col_name}_{header_count[col_name]}"
+                        else:
+                            header_count[col_name] = 0
+                            new_name = col_name
+                        
+                        final_headers.append(new_name)
+                    # ------------------------------------
+
+                    # 使用處理過的唯一標題建立 DataFrame
+                    df = pd.DataFrame(rows, columns=final_headers)
+                    
+                    st.subheader(f"📂 {selected_fund} 交易紀錄")
+                    st.dataframe(df, use_container_width=True)
+                else:
+                    st.warning("此分頁沒有資料。")
+
+            except Exception as e:
+                st.error(f"讀取分頁錯誤: {e}")
 
     # ==========================================
     # 功能 3: 新增交易 (寫入 Google Sheets)
